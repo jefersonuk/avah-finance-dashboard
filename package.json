@@ -1,0 +1,19 @@
+{
+  "name": "avah-finance-analysis",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "shared-types",
+    "calculations",
+    "parsers"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "build": "npm run build --workspace shared-types && npm run build --workspace calculations && npm run build --workspace parsers && npm run build --workspace backend && npm run build --workspace frontend",
+    "test": "npm run test --workspace calculations && npm run test --workspace parsers"
+  }
+}
