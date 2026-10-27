@@ -1,0 +1,58 @@
+# Override para rodar o SupoClip 100% local, sem APIs pagas:
+#   - transcrição com Whisper (dentro do backend/worker)
+#   - análise de clipes com Ollama (container próprio nesta rede)
+#
+# Uso (a partir do clone do supoclip):
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build frontend backend worker
+#
+# As variáveis TRANSCRIPTION_PROVIDER, LLM, OLLAMA_BASE_URL etc. vêm do .env
+# (veja env.local).
+services:
+  ollama:
+    image: ollama/ollama:0.40.11
+    container_name: supoclip-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      # O endpoint OpenAI-compatível não deixa o cliente escolher num_ctx;
+      # 4096 (padrão) corta transcrições longas.
+      - OLLAMA_CONTEXT_LENGTH=${OLLAMA_CONTEXT_LENGTH:-16384}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30m}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    volumes:
+      # Cache dos pesos do Whisper (openai-whisper usa ~/.cache/whisper).
+      - whisper_models:/root/.cache/whisper
+    environment:
+      # Lidas pelo patches/llm-timeouts.patch (padrão do app: 600/1800/240 s).
+      - TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS=${TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS:-600}
+      - ANALYSIS_TOTAL_TIMEOUT_SECONDS=${ANALYSIS_TOTAL_TIMEOUT_SECONDS:-1800}
+      - RERANK_TIMEOUT_SECONDS=${RERANK_TIMEOUT_SECONDS:-240}
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  worker:
+    volumes:
+      - whisper_models:/root/.cache/whisper
+    environment:
+      # Lidas pelo patches/llm-timeouts.patch (padrão do app: 600/1800/240 s).
+      - TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS=${TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS:-600}
+      - ANALYSIS_TOTAL_TIMEOUT_SECONDS=${ANALYSIS_TOTAL_TIMEOUT_SECONDS:-1800}
+      - RERANK_TIMEOUT_SECONDS=${RERANK_TIMEOUT_SECONDS:-240}
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  ollama_data:
+    driver: local
+  whisper_models:
+    driver: local

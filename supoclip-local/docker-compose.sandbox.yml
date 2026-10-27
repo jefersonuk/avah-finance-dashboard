@@ -1,0 +1,44 @@
+# Camada extra, por cima de docker-compose.local.yml, para redes com egress
+# restrito (sessão cloud do Claude Code). Usa os Dockerfiles de local-sandbox/
+# e monta os modelos baixados de antemão por fetch-models.py. Use via
+# "SANDBOX=1 ./setup.sh", que também constrói a imagem do backend.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml \
+#     -f docker-compose.sandbox.yml up -d --build frontend backend worker
+services:
+  frontend:
+    build:
+      dockerfile: local-sandbox/frontend.Dockerfile
+      target: development
+      additional_contexts:
+        ccr: ${PROXY_CA_DIR:-/root/.ccr}
+
+  # backend e worker usam a imagem que setup.sh constrói com
+  # "docker buildx build --network host": o Python do uv vem de github.com, que
+  # só é alcançável pelo proxy do host, e o bake do Compose não concede network.host.
+  backend:
+    image: supoclip-backend-sandbox
+    build: !reset null
+    pull_policy: never
+    volumes:
+      - ${SUPOCLIP_MODELS_DIR:?defina SUPOCLIP_MODELS_DIR}/whisper:/root/.cache/whisper:ro
+      # Em runtime o TLS dos containers é inspecionado no gateway de egress.
+      - ${PROXY_CA_DIR:-/root/.ccr}/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro
+
+  worker:
+    image: supoclip-backend-sandbox
+    build: !reset null
+    pull_policy: never
+    volumes:
+      - ${SUPOCLIP_MODELS_DIR:?defina SUPOCLIP_MODELS_DIR}/whisper:/root/.cache/whisper:ro
+      # Em runtime o TLS dos containers é inspecionado no gateway de egress.
+      - ${PROXY_CA_DIR:-/root/.ccr}/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro
+
+  ollama:
+    # Só CPU: a imagem oficial (~8,4 GB) não cabe junto com o resto na cota de disco.
+    image: supoclip-ollama-cpu
+    build:
+      context: local-sandbox
+      dockerfile: ollama-cpu.Dockerfile
+    volumes:
+      - ${SUPOCLIP_MODELS_DIR:?defina SUPOCLIP_MODELS_DIR}/ollama:/models:ro

@@ -1,0 +1,57 @@
+diff --git a/backend/src/ai.py b/backend/src/ai.py
+index 0d2593e..303c713 100644
+--- a/backend/src/ai.py
++++ b/backend/src/ai.py
+@@ -7,13 +7,14 @@ from typing import List, Dict, Any, Optional, Literal
+ import asyncio
+ import logging
+ import math
++import os
+ import random
+ import re
+ 
+ import httpx
+ from pydantic_ai import Agent, NativeOutput
+ from pydantic_ai.exceptions import ModelHTTPError
+-from pydantic_ai.models import Model
++from pydantic_ai.models import Model, create_async_http_client
+ from pydantic_ai.models.anthropic import AnthropicModel
+ from pydantic_ai.models.ollama import OllamaModel
+ from pydantic_ai.models.openrouter import OpenRouterModel
+@@ -36,7 +37,15 @@ MIN_ACCEPTED_CLIP_SECONDS = 15
+ MAX_ACCEPTED_CLIP_SECONDS = 60
+ TRANSCRIPT_ANALYSIS_CACHE_VERSION = "windowed-rerank-v6"
+ TRANSCRIPT_ANALYSIS_MAX_ATTEMPTS = 3
+-TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS = 600
++
++
++def _env_seconds(name: str, default: int) -> int:
++    """Timeout override from the environment; slow local models need more time."""
++    value = os.getenv(name, "").strip()
++    return int(value) if value.isdigit() and int(value) > 0 else default
++
++
++TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS = _env_seconds("TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS", 600)
+ # Long transcripts are analysed in overlapping windows so every part of the
+ # source gets the model's full attention; candidates are then reranked together.
+ ANALYSIS_WINDOW_SECONDS = 12 * 60
+@@ -46,8 +55,8 @@ ANALYSIS_WINDOW_CONCURRENCY = 3
+ ANALYSIS_WINDOW_SEGMENT_TARGET = "3-5"
+ # Wall-clock budget for all windows together. Each window additionally keeps
+ # its own TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS budget once it starts running.
+-ANALYSIS_TOTAL_TIMEOUT_SECONDS = 1800
+-RERANK_TIMEOUT_SECONDS = 240
++ANALYSIS_TOTAL_TIMEOUT_SECONDS = _env_seconds("ANALYSIS_TOTAL_TIMEOUT_SECONDS", 1800)
++RERANK_TIMEOUT_SECONDS = _env_seconds("RERANK_TIMEOUT_SECONDS", 240)
+ CANDIDATE_DEDUPE_OVERLAP_RATIO = 0.5
+ # How far a model timestamp may sit from a transcript line boundary and still be
+ # snapped onto it instead of the whole clip being dropped.
+@@ -547,6 +556,8 @@ def _build_transcript_model(
+         provider=OllamaProvider(
+             base_url=runtime_config.resolve_ollama_base_url(),
+             api_key=runtime_config.ollama_api_key,
++            # A request may take as long as the analysis budget on a CPU-only host.
++            http_client=create_async_http_client(timeout=TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS),
+         ),
+     )
+ 
