@@ -54,11 +54,20 @@ Edite o `.env` do clone e rode `$C up -d` de novo:
 ### Desempenho em CPU
 
 O prompt de análise do SupoClip tem ~4–5 mil tokens (instruções + schema JSON + transcrição)
-e a resposta traz vários clipes com texto, justificativas e notas. Numa VM com 4 vCPUs de
-2,1 GHz, o Qwen3 4B processa o prompt a ~45 tokens/s e gera a ~2,5 tokens/s nesse contexto,
-então uma análise leva de 10 a 25 minutos: por isso os timeouts maiores. Num PC com CPU
-recente ou GPU fica bem mais rápido. Não ative `OLLAMA_FLASH_ATTENTION` em CPU: ali ele
-deixou o processamento do prompt ~5× mais lento.
+e a resposta traz vários clipes com texto, justificativas e notas. Resultado medido numa VM
+com 4 vCPUs de 2,1 GHz, sem GPU, com um vídeo de teste de 80 s:
+
+- Whisper `small`: transcrição em ~30 s, boa qualidade com `TRANSCRIPTION_LANGUAGE=pt`
+  (na detecção automática, a voz sintética do teste foi detectada como latim);
+- Qwen3 4B: prompt a ~45–60 tokens/s, geração a ~2 tokens/s nesse contexto. A análise
+  **não terminou**: o modelo gerou mais de 4.500 tokens em 43 min sem fechar o JSON.
+
+Nessa classe de máquina, o LLM local não dá conta. Para gerar clipes de verdade, use uma
+máquina com GPU (ou CPU bem mais forte) e, se couber, um modelo maior, como
+`ollama:qwen3:8b` ou `ollama:gpt-oss:20b` (não testados aqui). Os timeouts maiores do
+`env.local` só evitam que análises lentas, mas que terminam, sejam abortadas.
+Não ative `OLLAMA_FLASH_ATTENTION` em CPU: no teste, ele deixou o processamento do
+prompt ~5× mais lento.
 
 Se o Ollama já roda fora do Docker na sua máquina, pode apontar
 `OLLAMA_BASE_URL=http://host.docker.internal:11434/v1` e ignorar o serviço `ollama`.
