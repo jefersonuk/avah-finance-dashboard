@@ -11,23 +11,40 @@ O kit adiciona um override do compose e um `.env`, e aplica um patch pequeno
 (`patches/llm-timeouts.patch`) que deixa os timeouts de IA configuráveis por variável
 de ambiente. Sem as variáveis, o comportamento do SupoClip não muda.
 
-## Uso numa máquina com internet normal
+## Uso no Mac (ou Linux) com internet normal
 
-Requisitos: Docker (Desktop ou Engine) com ~20 GB livres e 8 GB+ de RAM.
+Requisitos:
+
+- Docker Desktop aberto, com 8 GB+ de memória em Settings > Resources e ~15 GB livres;
+- no Mac, o app do [Ollama](https://ollama.com/download) instalado. Ele roda no macOS e usa a
+  GPU (Metal); dentro do Docker Desktop o Ollama só usa CPU e a análise fica muito lenta.
 
 ```bash
-./setup.sh
+git clone -b claude/supoclip-local-docker-setup-jim02c https://github.com/jefersonuk/avah-finance-dashboard
+cd avah-finance-dashboard/supoclip-local
+./setup.sh      # primeira vez: ~15-30 min (build das imagens e downloads)
+./check.sh      # confere tudo; ./check.sh --llm também testa o modelo
 ```
 
-O script:
+O `setup.sh`:
 
 1. clona o SupoClip em `~/supoclip` (mude com `SUPOCLIP_DIR=...`) e aplica o patch;
-2. cria o `.env` a partir do `.env.example` + `env.local`, com segredos aleatórios;
-3. sobe o Ollama e baixa o modelo (`ollama pull`);
-4. faz build e sobe `frontend`, `backend` e `worker` (Postgres e Redis vêm junto);
-5. espera http://localhost:3107 responder.
+2. escolhe o Ollama: o nativo do host se responder em `localhost:11434` (no Mac abre o app se
+   estiver instalado), senão um container só-CPU (`COMPOSE_PROFILES=ollama`). Force com
+   `OLLAMA_MODE=native` ou `OLLAMA_MODE=docker`;
+3. cria o `.env` a partir do `.env.example` + `env.local`, com segredos aleatórios, e ajusta as
+   chaves da máquina: no Apple Silicon, `BACKEND_PLATFORM=linux/arm64` (sem emulação);
+4. baixa `qwen3:4b-instruct-2507-q4_K_M` e, no modo nativo, cria o apelido `supoclip-qwen3`
+   com contexto de 16k (independe da configuração de contexto do app do Ollama);
+5. faz build e sobe `frontend`, `backend` e `worker` (Postgres e Redis vêm junto) e espera
+   http://localhost:3107 responder.
 
 Os pesos do Whisper são baixados no primeiro vídeo e ficam no volume `whisper_models`.
+Whisper roda em CPU dentro do container (o Docker no Mac não expõe a GPU); o `small` dá conta.
+
+O `check.sh` confere Docker e memória, a saúde dos containers, o Ollama (nativo ou container),
+se a imagem do backend é nativa da máquina, as respostas HTTP do frontend e do backend, e,
+de dentro do worker, a configuração (Whisper, idioma, LLM) e a conexão com o modelo.
 
 Comandos úteis (dentro de `~/supoclip`):
 
@@ -46,8 +63,8 @@ Edite o `.env` do clone e rode `$C up -d` de novo:
 |---|---|---|
 | `WHISPER_MODEL_SIZE` | `small` | `base` é ~3x mais rápido; `medium`/`large-v3` são melhores com GPU |
 | `TRANSCRIPTION_LANGUAGE` | `pt` | Vazio = detectar o idioma (pode errar em trechos curtos ou ruidosos) |
-| `LLM` | `ollama:qwen3:4b-instruct-2507-q4_K_M` | Com mais RAM/GPU: `ollama:qwen3:8b`, `ollama:gpt-oss:20b` (rode `ollama pull` antes) |
-| `OLLAMA_CONTEXT_LENGTH` | `16384` | Contexto do Ollama; o padrão de 4096 corta transcrições longas |
+| `LLM` | `ollama:supoclip-qwen3` (nativo) ou `ollama:qwen3:4b-instruct-2507-q4_K_M` (container) | Com mais RAM/GPU: `ollama:qwen3:8b`, `ollama:gpt-oss:20b` (rode `ollama pull` antes) |
+| `OLLAMA_CONTEXT_LENGTH` | `16384` | Contexto do Ollama em container; no nativo, use um apelido com `num_ctx` (como o `supoclip-qwen3`) |
 | `TRANSCRIPT_ANALYSIS_TIMEOUT_SECONDS` | `3600` | Limite por análise e por pedido HTTP ao Ollama (o app usa 600) |
 | `ANALYSIS_TOTAL_TIMEOUT_SECONDS` / `RERANK_TIMEOUT_SECONDS` | `7200` / `1800` | Vídeos longos (janelas + reranking); o app usa 1800 / 240 |
 
@@ -68,9 +85,6 @@ máquina com GPU (ou CPU bem mais forte) e, se couber, um modelo maior, como
 `env.local` só evitam que análises lentas, mas que terminam, sejam abortadas.
 Não ative `OLLAMA_FLASH_ATTENTION` em CPU: no teste, ele deixou o processamento do
 prompt ~5× mais lento.
-
-Se o Ollama já roda fora do Docker na sua máquina, pode apontar
-`OLLAMA_BASE_URL=http://host.docker.internal:11434/v1` e ignorar o serviço `ollama`.
 
 ## Modo `SANDBOX=1` (rede restrita)
 

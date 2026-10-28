@@ -1,14 +1,16 @@
 # Override para rodar o SupoClip 100% local, sem APIs pagas:
 #   - transcrição com Whisper (dentro do backend/worker)
-#   - análise de clipes com Ollama (container próprio nesta rede)
+#   - análise de clipes com Ollama: o app nativo do host (no Mac usa a GPU) ou o
+#     serviço "ollama" abaixo, ativado com COMPOSE_PROFILES=ollama
 #
 # Uso (a partir do clone do supoclip):
 #   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build frontend backend worker
 #
-# As variáveis TRANSCRIPTION_PROVIDER, LLM, OLLAMA_BASE_URL etc. vêm do .env
-# (veja env.local).
+# As variáveis TRANSCRIPTION_PROVIDER, LLM, OLLAMA_BASE_URL, COMPOSE_PROFILES etc.
+# vêm do .env, que o setup.sh escreve (veja env.local).
 services:
   ollama:
+    profiles: ["ollama"]
     image: ollama/ollama:0.40.11
     container_name: supoclip-ollama
     volumes:
@@ -38,6 +40,8 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+        # Com o Ollama nativo o serviço fica desligado e a dependência é ignorada.
+        required: false
 
   worker:
     volumes:
@@ -50,6 +54,8 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+        # Com o Ollama nativo o serviço fica desligado e a dependência é ignorada.
+        required: false
 
 volumes:
   ollama_data:
